@@ -1,7 +1,17 @@
-// Package notify posts machine-readable alerts to an ntfy topic, in the shape
-// Uptime Kuma's webhook notification produces. A consumer that already parses
-// Kuma's webhooks therefore needs no second parser, which is the reason for
-// following someone else's field names rather than inventing better ones.
+// Package notify posts alerts to an ntfy topic in one of two formats.
+//
+// FormatNtfy is ntfy's own publishing format: the message text as a plain body,
+// with title, priority and tags in headers. A person subscribed to the topic in
+// the ntfy app reads it as a notification.
+//
+// FormatKumaJSON is a JSON object in the shape Uptime Kuma's webhook
+// notification produces. A consumer that already parses Kuma's webhooks
+// therefore needs no second parser, which is the reason for following someone
+// else's field names rather than inventing better ones. In the ntfy app the
+// same message shows as raw JSON.
+//
+// Both formats are built from one Payload, so the fields below are required in
+// either; in FormatNtfy they become the title and the priority.
 //
 // The four required fields — `schema` (the number 1), `monitor_id` (a number),
 // `service` (a non-empty string) and `status` (0 = problem, 1 = resolved) — are
@@ -26,8 +36,25 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
+
+// Format names the wire format of a message on the topic.
+type Format string
+
+const (
+	// FormatNtfy posts the message as text with ntfy's title, priority and tags
+	// headers.
+	FormatNtfy Format = "ntfy"
+	// FormatKumaJSON posts a JSON object in Uptime Kuma's webhook shape.
+	FormatKumaJSON Format = "kuma-json"
+)
+
+// ValidFormat reports whether f is one of the formats Send can produce.
+func ValidFormat(f Format) bool {
+	return f == FormatNtfy || f == FormatKumaJSON
+}
 
 // Status values as the adapter reads them.
 const (
@@ -56,6 +83,9 @@ type Target struct {
 	// Hostname fills the payload's `hostname`, naming the deployment the alert
 	// came from.
 	Hostname string
+	// Format selects the wire format; empty means FormatKumaJSON, the only
+	// format before the field existed.
+	Format Format
 }
 
 // Sender posts an alert. The watcher takes this interface so its rules can be
@@ -110,16 +140,19 @@ func (n *Notifier) Send(ctx context.Context, target Target, p Payload) error {
 		p.Since = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	body, err := json.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("marshalling alert: %w", err)
+	var req *http.Request
+	var err error
+	switch target.Format {
+	case FormatNtfy:
+		req, err = ntfyRequest(ctx, target.URL, p)
+	case FormatKumaJSON, "":
+		req, err = kumaJSONRequest(ctx, target.URL, p)
+	default:
+		return fmt.Errorf("unknown alert format %q", target.Format)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.URL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("creating alert request: %w", err)
+		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.httpClient.Do(req)
 	if err != nil {
@@ -132,9 +165,62 @@ func (n *Notifier) Send(ctx context.Context, target Target, p Payload) error {
 	}
 
 	n.log.Info("alert sent",
+		"format", target.Format,
 		"monitor_id", p.MonitorID,
 		"service", p.Service,
 		"status", p.Status,
 	)
 	return nil
+}
+
+// kumaJSONRequest builds the POST for FormatKumaJSON.
+func kumaJSONRequest(ctx context.Context, url string, p Payload) (*http.Request, error) {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling alert: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating alert request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+// ntfyRequest builds the POST for FormatNtfy, using the headers documented at
+// https://docs.ntfy.sh/publish/.
+//
+// A problem is sent at priority 4 (high), a resolution at 3 (the default): a
+// problem is what a subscriber has to see, and ntfy clients sort and sound by
+// priority. The title carries the service and the status, because a client's
+// notification list shows the title and truncates the body.
+//
+// Header values are ASCII here: the service names and the status words are
+// constants of this package and the watcher, and the hostname is a host name.
+// The body is UTF-8 and may carry the em dash and ellipsis of the messages.
+func ntfyRequest(ctx context.Context, url string, p Payload) (*http.Request, error) {
+	title := p.Service + ": problem"
+	priority := "4"
+	tags := "warning"
+	if p.Status == StatusResolved {
+		title = p.Service + ": resolved"
+		priority = "3"
+		tags = "white_check_mark"
+	}
+
+	body := p.Msg
+	if body == "" {
+		body = title
+	}
+	body += fmt.Sprintf("\n\nmonitor_id %d · host %s · since %s", p.MonitorID, p.Hostname, p.Since)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating alert request: %w", err)
+	}
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	req.Header.Set("X-Title", title)
+	req.Header.Set("X-Priority", priority)
+	req.Header.Set("X-Tags", tags)
+	return req, nil
 }

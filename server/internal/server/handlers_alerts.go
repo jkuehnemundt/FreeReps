@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/claude/freereps/internal/alerts"
+	"github.com/claude/freereps/internal/notify"
 	"github.com/claude/freereps/internal/storage"
 )
 
@@ -16,6 +17,7 @@ import (
 type alertSettingsBody struct {
 	Enabled          bool   `json:"enabled"`
 	NtfyURL          string `json:"ntfy_url"`
+	Format           string `json:"format"`
 	Hostname         string `json:"hostname"`
 	CheckIntervalSec int    `json:"check_interval_sec"`
 	FailureThreshold int    `json:"failure_threshold"`
@@ -97,6 +99,7 @@ func (s *Server) handleAlertSettings(w http.ResponseWriter, r *http.Request) {
 		"settings": alertSettingsBody{
 			Enabled:          st.Enabled,
 			NtfyURL:          st.NtfyURL,
+			Format:           st.Format,
 			Hostname:         st.Hostname,
 			CheckIntervalSec: int(st.CheckInterval.Seconds()),
 			FailureThreshold: st.FailureThreshold,
@@ -131,6 +134,7 @@ func (s *Server) handleSaveAlertSettings(w http.ResponseWriter, r *http.Request)
 	st := storage.AlertSettings{
 		Enabled:          body.Enabled,
 		NtfyURL:          body.NtfyURL,
+		Format:           body.Format,
 		Hostname:         body.Hostname,
 		CheckInterval:    time.Duration(body.CheckIntervalSec) * time.Second,
 		FailureThreshold: body.FailureThreshold,
@@ -145,6 +149,7 @@ func (s *Server) handleSaveAlertSettings(w http.ResponseWriter, r *http.Request)
 	s.log.Info("alert settings saved",
 		"enabled", st.Enabled,
 		"target", st.NtfyURL,
+		"format", st.Format,
 		"interval", st.CheckInterval,
 		"failure_threshold", st.FailureThreshold,
 		"apple_silence", st.AppleSilence)
@@ -155,6 +160,9 @@ func (s *Server) handleSaveAlertSettings(w http.ResponseWriter, r *http.Request)
 // the reason otherwise. An enabled channel is validated strictly; a disabled one
 // only has to be storable.
 func validateAlertSettings(b alertSettingsBody) string {
+	if !notify.ValidFormat(notify.Format(b.Format)) {
+		return `format must be "ntfy" or "kuma-json"`
+	}
 	if b.FailureThreshold < 1 {
 		return "failure_threshold must be at least 1"
 	}
@@ -222,5 +230,6 @@ func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 		"sent":       true,
 		"monitor_id": alerts.MonitorChannelTest,
 		"target":     st.NtfyURL,
+		"format":     st.Format,
 	})
 }

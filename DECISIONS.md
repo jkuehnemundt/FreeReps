@@ -1119,12 +1119,21 @@ forwarding header.
 
 **Decided:** 2026-09-20
 
-**Decision.** FreeReps posts its own alerts as a JSON object to a configured ntfy
-topic, in the shape Uptime Kuma's webhook notification produces: `schema` (the
-number 1), `monitor_id`, `service` and `status` (0 = problem, 1 = resolved), plus
-`hostname`, `monitor_type`, `since` and `msg`. Following Kuma's field names rather
-than inventing better ones means a consumer that already parses Kuma's webhooks
-needs no second parser.
+**Decision.** FreeReps posts its own alerts to a configured ntfy topic, in one
+of two formats chosen per deployment (`alert_settings.format`):
+
+- **`ntfy`** — ntfy's own publishing format for a person subscribed in the ntfy
+  app: the message as a text body, `<service>: problem|resolved` as the title,
+  priority 4 for a problem and 3 for a resolution. The default for a new
+  deployment.
+- **`kuma-json`** — a JSON object in the shape Uptime Kuma's webhook
+  notification produces: `schema` (the number 1), `monitor_id`, `service` and
+  `status` (0 = problem, 1 = resolved), plus `hostname`, `monitor_type`, `since`
+  and `msg`. Following Kuma's field names rather than inventing better ones
+  means a consumer that already parses Kuma's webhooks needs no second parser.
+
+Both are built from the same payload, so `monitor_id`, `service` and `status`
+are required in either format.
 
 The ids sit in the block 9200–9299, clear of the monitor ids a Kuma instance on
 the same topic hands out from 1 upwards
@@ -1175,6 +1184,19 @@ runs the consumer in its own infrastructure repository, which registers the id
 blocks of every sender writing to that topic — including this project's
 9200–9299. That document is the place to look when an id has to be added; nothing
 in FreeReps depends on it.
+
+**Revisions.**
+
+- **2026-10-10 — the `ntfy` format added; the deployment moved to its own
+  topic.** Until this date the only format was `kuma-json`, and the deployment
+  posted to the topic `kuma-json`, whose consumer on juno hands every accepted
+  message to an LLM session for diagnosis. A failed sync of an external provider
+  needs no diagnosis run: the cause is on the provider's side or in a credential,
+  and the operator acts on it from the message alone. The deployment now posts
+  in the `ntfy` format to the topic `freereps`. The migration
+  (`000039_alert_format`) sets existing rows to `kuma-json`, so another
+  deployment whose consumer parses that object receives the same messages after
+  the upgrade.
 
 ---
 

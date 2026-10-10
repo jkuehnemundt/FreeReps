@@ -166,6 +166,7 @@ func main() {
 	seeded, err := db.SeedAlertSettings(ctx, storage.AlertSettings{
 		Enabled:          cfg.Alerts.Enabled,
 		NtfyURL:          cfg.Alerts.NtfyURL,
+		Format:           cfg.Alerts.Format,
 		Hostname:         cfg.Alerts.Hostname,
 		CheckInterval:    cfg.Alerts.CheckInterval,
 		FailureThreshold: cfg.Alerts.FailureThreshold,
@@ -177,7 +178,7 @@ func main() {
 	}
 	if seeded {
 		log.Info("alert settings seeded from config",
-			"enabled", cfg.Alerts.Enabled, "target", cfg.Alerts.NtfyURL)
+			"enabled", cfg.Alerts.Enabled, "target", cfg.Alerts.NtfyURL, "format", cfg.Alerts.Format)
 	}
 
 	alertWatcher := alerts.NewWatcher(db, notify.New(log), log)

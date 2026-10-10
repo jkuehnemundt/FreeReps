@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -125,5 +126,88 @@ func TestSendWithoutTargetFails(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Send returned no error without a target URL")
+	}
+}
+
+// TestSendNtfyFormat covers the format a person reads in the ntfy app: the
+// message as the body, the service and status in the title, and a problem at a
+// higher priority than its resolution, so a client sounds for the first only.
+func TestSendNtfyFormat(t *testing.T) {
+	type posted struct {
+		contentType, title, priority, tags, body string
+	}
+	var got []posted
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = append(got, posted{
+			contentType: r.Header.Get("Content-Type"),
+			title:       r.Header.Get("X-Title"),
+			priority:    r.Header.Get("X-Priority"),
+			tags:        r.Header.Get("X-Tags"),
+			body:        string(b),
+		})
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	target := Target{URL: srv.URL, Hostname: "freereps", Format: FormatNtfy}
+	n := testNotifier()
+	for _, status := range []int{StatusProblem, StatusResolved} {
+		if err := n.Send(context.Background(), target, Payload{
+			MonitorID: 9201,
+			Service:   "freereps - withings sync",
+			Status:    status,
+			Msg:       "3 consecutive failed runs — user 2: timeout",
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("posted %d messages, want 2", len(got))
+	}
+	problem, resolved := got[0], got[1]
+	if strings.HasPrefix(problem.body, "{") {
+		t.Errorf("body is JSON, want text: %q", problem.body)
+	}
+	if !strings.HasPrefix(problem.body, "3 consecutive failed runs — user 2: timeout") {
+		t.Errorf("body = %q, want it to start with the message", problem.body)
+	}
+	if !strings.Contains(problem.body, "monitor_id 9201") {
+		t.Errorf("body = %q, want the monitor_id in it", problem.body)
+	}
+	if !strings.HasPrefix(problem.contentType, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", problem.contentType)
+	}
+	if problem.title != "freereps - withings sync: problem" {
+		t.Errorf("problem title = %q", problem.title)
+	}
+	if resolved.title != "freereps - withings sync: resolved" {
+		t.Errorf("resolved title = %q", resolved.title)
+	}
+	if problem.priority != "4" || resolved.priority != "3" {
+		t.Errorf("priorities = %q / %q, want 4 / 3", problem.priority, resolved.priority)
+	}
+	if problem.tags == "" || problem.tags == resolved.tags {
+		t.Errorf("tags = %q / %q, want two different tags", problem.tags, resolved.tags)
+	}
+}
+
+// TestSendRejectsUnknownFormat keeps a stored value this package cannot produce
+// from being posted in some other format.
+func TestSendRejectsUnknownFormat(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("a message in an unknown format was posted")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := testNotifier().Send(context.Background(), Target{URL: srv.URL, Format: "xml"}, Payload{
+		MonitorID: 9200,
+		Service:   "freereps - channel test",
+		Status:    StatusResolved,
+	})
+	if err == nil {
+		t.Fatal("Send returned no error for an unknown format")
 	}
 }

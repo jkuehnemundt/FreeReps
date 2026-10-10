@@ -218,7 +218,7 @@ func (w *Watcher) interval(st storage.AlertSettings) time.Duration {
 // prove the path end to end. It carries `status: 1`, because a test must not
 // leave an open problem on the consumer's side.
 func (w *Watcher) SendTest(ctx context.Context, st storage.AlertSettings, msg string) error {
-	return w.sender.Send(ctx, notify.Target{URL: st.NtfyURL, Hostname: st.Hostname}, notify.Payload{
+	return w.sender.Send(ctx, notify.Target{URL: st.NtfyURL, Hostname: st.Hostname, Format: notify.Format(st.Format)}, notify.Payload{
 		MonitorID: MonitorChannelTest,
 		Service:   ServiceNames[MonitorChannelTest],
 		Status:    notify.StatusResolved,
@@ -427,7 +427,7 @@ func (w *Watcher) report(ctx context.Context, st storage.AlertSettings, monitorI
 		Since:     since.UTC().Format(time.RFC3339),
 		Msg:       msg,
 	}
-	target := notify.Target{URL: st.NtfyURL, Hostname: st.Hostname}
+	target := notify.Target{URL: st.NtfyURL, Hostname: st.Hostname, Format: notify.Format(st.Format)}
 	if err := w.sender.Send(ctx, target, p); err != nil {
 		return fmt.Errorf("sending alert for %s: %w", service, err)
 	}

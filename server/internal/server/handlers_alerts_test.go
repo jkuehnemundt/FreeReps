@@ -10,6 +10,7 @@ func TestValidateAlertSettings(t *testing.T) {
 	valid := alertSettingsBody{
 		Enabled:          true,
 		NtfyURL:          "https://ntfy.example.com/freereps-alerts",
+		Format:           "ntfy",
 		Hostname:         "freereps",
 		CheckIntervalSec: 300,
 		FailureThreshold: 3,
@@ -27,6 +28,8 @@ func TestValidateAlertSettings(t *testing.T) {
 		{"no topic in the url", func(b *alertSettingsBody) { b.NtfyURL = "https://ntfy.coydog-fence.ts.net/" }},
 		{"no url while enabled", func(b *alertSettingsBody) { b.NtfyURL = "" }},
 		{"not an http url", func(b *alertSettingsBody) { b.NtfyURL = "ntfy://host/topic" }},
+		{"no format", func(b *alertSettingsBody) { b.Format = "" }},
+		{"unknown format", func(b *alertSettingsBody) { b.Format = "json" }},
 		{"threshold below one", func(b *alertSettingsBody) { b.FailureThreshold = 0 }},
 		{"interval below the floor", func(b *alertSettingsBody) { b.CheckIntervalSec = 30 }},
 		{"silence between off and an hour", func(b *alertSettingsBody) { b.AppleSilenceSec = 600 }},

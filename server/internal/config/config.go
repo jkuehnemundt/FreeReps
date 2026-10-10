@@ -120,6 +120,11 @@ type AlertsConfig struct {
 	// NtfyURL is the full topic URL, e.g. https://ntfy.example.com/freereps-alerts
 	NtfyURL string `yaml:"ntfy_url"`
 
+	// Format is the wire format: "ntfy" for a text message a person reads in
+	// the ntfy app, "kuma-json" for Uptime Kuma's webhook object, which a
+	// program parses (internal/notify).
+	Format string `yaml:"format"`
+
 	// Hostname is the `hostname` field of every payload, so a consumer can name
 	// the instance an alert came from — a test instance beside a production one.
 	Hostname string `yaml:"hostname"`
@@ -151,7 +156,7 @@ func (d DatabaseConfig) DSN() string {
 //	FREEREPS_DB_USER, FREEREPS_DB_PASSWORD, FREEREPS_DB_SSLMODE,
 //	FREEREPS_TS_ENABLED, FREEREPS_TS_HOSTNAME, FREEREPS_TS_STATE_DIR,
 //	FREEREPS_INGEST_TIMEZONE,
-//	FREEREPS_ALERTS_ENABLED, FREEREPS_ALERTS_NTFY_URL
+//	FREEREPS_ALERTS_ENABLED, FREEREPS_ALERTS_NTFY_URL, FREEREPS_ALERTS_FORMAT
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Tailscale: TailscaleConfig{
@@ -181,6 +186,7 @@ func Load(path string) (*Config, error) {
 		// channel, and 36 hours of silence on the Apple Health path means two
 		// missed automation days rather than one quiet evening.
 		Alerts: AlertsConfig{
+			Format:           "ntfy",
 			Hostname:         "freereps",
 			RawCheckInterval: "5m",
 			RawAppleSilence:  "36h",
@@ -294,6 +300,9 @@ func Load(path string) (*Config, error) {
 	if cfg.Alerts.Enabled && cfg.Alerts.NtfyURL == "" {
 		return nil, fmt.Errorf("alerts.enabled is set but alerts.ntfy_url is empty")
 	}
+	if f := cfg.Alerts.Format; f != "ntfy" && f != "kuma-json" {
+		return nil, fmt.Errorf("alerts.format must be \"ntfy\" or \"kuma-json\", got %q", f)
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
@@ -321,6 +330,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("FREEREPS_ALERTS_NTFY_URL"); v != "" {
 		cfg.Alerts.NtfyURL = v
+	}
+	if v := os.Getenv("FREEREPS_ALERTS_FORMAT"); v != "" {
+		cfg.Alerts.Format = v
 	}
 	if v := os.Getenv("FREEREPS_DB_HOST"); v != "" {
 		cfg.Database.Host = v

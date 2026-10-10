@@ -58,3 +58,61 @@ func TestRunHistoryCountsTheSourcesOwnColumns(t *testing.T) {
 		t.Errorf("newest = %s %q, want %s \"error\"", got.NewestRunAt, got.NewestStatus, newest)
 	}
 }
+
+// TestAlertSettingsKeepTheFormat checks the column order of the three
+// statements that name `format`: the parameter it is bound to is the last one,
+// out of column order, and a shifted binding would store the hostname as the
+// format or fail the CHECK. It also checks that the CHECK refuses a value the
+// notifier cannot produce.
+func TestAlertSettingsKeepTheFormat(t *testing.T) {
+	db := aggTestDB(t)
+	ctx := context.Background()
+
+	// alert_settings holds one row for the whole database; put back what was
+	// there so a scratch database shared with other tests keeps its contents.
+	prev, known, err := db.GetAlertSettings(ctx)
+	if err != nil {
+		t.Fatalf("reading settings: %v", err)
+	}
+	t.Cleanup(func() {
+		if known {
+			_ = db.SetAlertSettings(ctx, prev)
+		} else {
+			_, _ = db.Pool.Exec(ctx, `DELETE FROM alert_settings`)
+		}
+	})
+
+	want := AlertSettings{
+		Enabled:          true,
+		NtfyURL:          "https://ntfy.example.com/freereps",
+		Format:           "ntfy",
+		Hostname:         "freereps-test",
+		CheckInterval:    5 * time.Minute,
+		FailureThreshold: 3,
+		AppleSilence:     36 * time.Hour,
+	}
+	if err := db.SetAlertSettings(ctx, want); err != nil {
+		t.Fatalf("writing settings: %v", err)
+	}
+	got, _, err := db.GetAlertSettings(ctx)
+	if err != nil {
+		t.Fatalf("reading settings: %v", err)
+	}
+	if got.Format != want.Format || got.Hostname != want.Hostname || got.NtfyURL != want.NtfyURL {
+		t.Errorf("read back format=%q hostname=%q url=%q, want %q %q %q",
+			got.Format, got.Hostname, got.NtfyURL, want.Format, want.Hostname, want.NtfyURL)
+	}
+
+	want.Format = "kuma-json"
+	if err := db.SetAlertSettings(ctx, want); err != nil {
+		t.Fatalf("writing settings: %v", err)
+	}
+	if got, _, _ := db.GetAlertSettings(ctx); got.Format != "kuma-json" {
+		t.Errorf("format = %q after update, want kuma-json", got.Format)
+	}
+
+	want.Format = "xml"
+	if err := db.SetAlertSettings(ctx, want); err == nil {
+		t.Error("an unknown format was stored")
+	}
+}

@@ -115,7 +115,9 @@ export default function AlertsTab() {
     setNotice(null);
     try {
       const r = await sendTestAlert();
-      setNotice(`Test message sent to ${r.target} on monitor_id ${r.monitor_id}.`);
+      setNotice(
+        `Test message sent to ${r.target} as ${r.format} on monitor_id ${r.monitor_id}.`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Test failed");
     } finally {
@@ -131,9 +133,8 @@ export default function AlertsTab() {
           ntfy
         </a>{" "}
         topic, so a silent integration surfaces without anyone reading the import
-        log. The payload follows Uptime Kuma's webhook shape, and each condition
-        carries its own monitor id — a receiver can group by it. Stored in the
-        database, not in the config file.
+        log. Each condition carries its own monitor id, so a receiver can group
+        by it. Stored in the database, not in the config file.
       </TabHeader>
 
       {error ? (
@@ -208,8 +209,34 @@ export default function AlertsTab() {
                 }}
               >
                 The full topic URL, including the topic name — that name is what
-                a subscriber listens on. Any endpoint accepting an ntfy-style
-                POST works; the body is JSON either way.
+                a subscriber listens on.
+              </p>
+            </Row>
+
+            <Row label="Format">
+              <select
+                className="input"
+                style={{ width: 260 }}
+                value={settings.format}
+                onChange={(e) =>
+                  patch({ format: e.target.value as AlertSettings["format"] })
+                }
+              >
+                <option value="ntfy">ntfy notification</option>
+                <option value="kuma-json">Uptime Kuma JSON</option>
+              </select>
+              <p
+                style={{
+                  font: "400 12px/1.5 var(--font-body)",
+                  color: "var(--color-neutral-600)",
+                  margin: "6px 0 0",
+                }}
+              >
+                <em>ntfy notification</em> sends the message as text with a
+                title and a priority, for a person subscribed in the ntfy app.{" "}
+                <em>Uptime Kuma JSON</em> sends the object Uptime Kuma's webhook
+                produces, for a program that parses it; the ntfy app shows it
+                as raw JSON.
               </p>
             </Row>
 

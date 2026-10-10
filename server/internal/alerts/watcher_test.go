@@ -347,6 +347,7 @@ func TestCheckUsesTheStoredTarget(t *testing.T) {
 	store := newFakeStore()
 	store.settings.NtfyURL = "https://ntfy.elsewhere.example.com/freereps-alerts"
 	store.settings.Hostname = "freereps-test"
+	store.settings.Format = "ntfy"
 	store.runs["hevy_sync"] = map[int][]storage.SourceRun{2: failedRuns(3, "boom")}
 	rec := &recorder{}
 
@@ -360,6 +361,9 @@ func TestCheckUsesTheStoredTarget(t *testing.T) {
 	}
 	if rec.targets[0].Hostname != "freereps-test" {
 		t.Errorf("hostname = %q, want the stored hostname", rec.targets[0].Hostname)
+	}
+	if rec.targets[0].Format != notify.FormatNtfy {
+		t.Errorf("format = %q, want the stored format", rec.targets[0].Format)
 	}
 }
 

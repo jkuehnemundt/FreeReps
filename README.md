@@ -459,8 +459,8 @@ No local FreeReps binary and no database access are needed on the client side.
 
 An integration that stops delivering is the failure this project could not see:
 the container is healthy, the dashboard answers, and a source simply writes no
-more rows. FreeReps therefore reports that state itself, as a JSON POST to an
-[ntfy](https://ntfy.sh) topic — or to any endpoint that accepts one.
+more rows. FreeReps therefore reports that state itself, as a POST to an
+[ntfy](https://ntfy.sh) topic.
 
 The conditions are evaluated from `import_logs` rather than from inside the sync
 loops, so a syncer that stopped running is covered as well:
@@ -475,8 +475,18 @@ loops, so a syncer that stopped running is covered as well:
 | 9205 | no Apple Health workout delivered for longer than the silence threshold |
 | 9206 / 9207 / 9208 | the Withings, Oura or Hevy sync keeps succeeding without storing a row for 7 days, 48 hours or 14 days |
 
-The payload follows Uptime Kuma's webhook shape, so an existing Kuma consumer
-needs no second parser:
+Two formats are available, chosen per deployment under Settings → Alerts.
+
+**`ntfy`** (the default for a new deployment) is ntfy's own publishing format,
+for a person subscribed to the topic in the ntfy app. The message is the body;
+the title is `<service>: problem` or `<service>: resolved`; a problem is sent at
+priority 4 with the tag `warning`, a resolution at priority 3 with
+`white_check_mark`. The body ends with the `monitor_id`, the reporting host and
+the time the state began.
+
+**`kuma-json`** follows Uptime Kuma's webhook shape, for a program reading the
+topic; an existing Kuma consumer needs no second parser. The ntfy app shows
+these messages as raw JSON:
 
 ```json
 {
@@ -510,7 +520,7 @@ otherwise mask a first user whose sync does not.
 
 ### Configuring it
 
-Settings → **Alerts**: the topic URL, the name to report as, the check interval,
+Settings → **Alerts**: the topic URL, the format, the name to report as, the check interval,
 the failure threshold, the silence threshold, and a button that posts a test
 message on 9200 with `status: 1`. The values live in the database; the `alerts`
 block in `config.yaml` seeds them on first start only, so a redeploy cannot
@@ -520,6 +530,7 @@ overwrite what was entered in the UI.
 alerts:
   enabled: false
   ntfy_url: "https://ntfy.example.com/freereps-alerts"
+  format: "ntfy"         # or "kuma-json"
   hostname: "freereps"
   check_interval: "5m"
   failure_threshold: 3

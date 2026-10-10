@@ -720,6 +720,8 @@ export async function disconnectHevy(): Promise<void> {
 export interface AlertSettings {
   enabled: boolean;
   ntfy_url: string;
+  /** "ntfy": text with title and priority; "kuma-json": Uptime Kuma's webhook object. */
+  format: "ntfy" | "kuma-json";
   hostname: string;
   check_interval_sec: number;
   failure_threshold: number;
@@ -764,7 +766,11 @@ export async function saveAlertSettings(settings: AlertSettings): Promise<void> 
 }
 
 /** Posts one message on the channel-test id, using the stored settings. */
-export async function sendTestAlert(): Promise<{ monitor_id: number; target: string }> {
+export async function sendTestAlert(): Promise<{
+  monitor_id: number;
+  target: string;
+  format: string;
+}> {
   const res = await fetch(`${BASE}/alerts/test`, { method: "POST" });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `${res.status}: ${res.statusText}`);

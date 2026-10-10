@@ -164,6 +164,7 @@ func (db *DB) RunHistoryByUser(ctx context.Context, source string) (map[int]RunH
 type AlertSettings struct {
 	Enabled          bool
 	NtfyURL          string
+	Format           string // notify.FormatNtfy or notify.FormatKumaJSON
 	Hostname         string
 	CheckInterval    time.Duration
 	FailureThreshold int
@@ -177,10 +178,10 @@ func (db *DB) GetAlertSettings(ctx context.Context) (AlertSettings, bool, error)
 	var st AlertSettings
 	var checkSec, silenceSec int
 	err := db.Pool.QueryRow(ctx,
-		`SELECT enabled, ntfy_url, hostname, check_interval_sec, failure_threshold,
+		`SELECT enabled, ntfy_url, format, hostname, check_interval_sec, failure_threshold,
 		        apple_silence_sec, updated_at
 		   FROM alert_settings WHERE id = 1`).
-		Scan(&st.Enabled, &st.NtfyURL, &st.Hostname, &checkSec, &st.FailureThreshold,
+		Scan(&st.Enabled, &st.NtfyURL, &st.Format, &st.Hostname, &checkSec, &st.FailureThreshold,
 			&silenceSec, &st.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -196,12 +197,13 @@ func (db *DB) GetAlertSettings(ctx context.Context) (AlertSettings, bool, error)
 // SetAlertSettings replaces the settings row.
 func (db *DB) SetAlertSettings(ctx context.Context, st AlertSettings) error {
 	if _, err := db.Pool.Exec(ctx,
-		`INSERT INTO alert_settings (id, enabled, ntfy_url, hostname, check_interval_sec,
+		`INSERT INTO alert_settings (id, enabled, ntfy_url, format, hostname, check_interval_sec,
 		                            failure_threshold, apple_silence_sec, updated_at)
-		 VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+		 VALUES (1, $1, $2, $7, $3, $4, $5, $6, NOW())
 		 ON CONFLICT (id) DO UPDATE SET
 		   enabled = EXCLUDED.enabled,
 		   ntfy_url = EXCLUDED.ntfy_url,
+		   format = EXCLUDED.format,
 		   hostname = EXCLUDED.hostname,
 		   check_interval_sec = EXCLUDED.check_interval_sec,
 		   failure_threshold = EXCLUDED.failure_threshold,
@@ -209,7 +211,7 @@ func (db *DB) SetAlertSettings(ctx context.Context, st AlertSettings) error {
 		   updated_at = NOW()`,
 		st.Enabled, st.NtfyURL, st.Hostname,
 		int(st.CheckInterval.Seconds()), st.FailureThreshold,
-		int(st.AppleSilence.Seconds())); err != nil {
+		int(st.AppleSilence.Seconds()), st.Format); err != nil {
 		return fmt.Errorf("writing alert settings: %w", err)
 	}
 	return nil
@@ -223,13 +225,13 @@ func (db *DB) SetAlertSettings(ctx context.Context, st AlertSettings) error {
 // opened the Settings screen yet.
 func (db *DB) SeedAlertSettings(ctx context.Context, st AlertSettings) (bool, error) {
 	tag, err := db.Pool.Exec(ctx,
-		`INSERT INTO alert_settings (id, enabled, ntfy_url, hostname, check_interval_sec,
+		`INSERT INTO alert_settings (id, enabled, ntfy_url, format, hostname, check_interval_sec,
 		                            failure_threshold, apple_silence_sec)
-		 VALUES (1, $1, $2, $3, $4, $5, $6)
+		 VALUES (1, $1, $2, $7, $3, $4, $5, $6)
 		 ON CONFLICT (id) DO NOTHING`,
 		st.Enabled, st.NtfyURL, st.Hostname,
 		int(st.CheckInterval.Seconds()), st.FailureThreshold,
-		int(st.AppleSilence.Seconds()))
+		int(st.AppleSilence.Seconds()), st.Format)
 	if err != nil {
 		return false, fmt.Errorf("seeding alert settings: %w", err)
 	}
