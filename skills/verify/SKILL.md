@@ -74,14 +74,11 @@ worth running on its own when you want the type errors without waiting for Vite.
 ## 4. Documents
 
 ```bash
-tools/check-docs.sh --all
+tools/check-docs.sh
 ```
 
-Checks the movement rule and status tokens in `ROADMAP.md`, ISO dates in the
-tracked documents, and sweeps the repo for German text. It detects; it does not
-prevent. On a German hit that is a verbatim quote of upstream output, add that
-specific line to `tools/check-docs.allow` with a reason — do not weaken the
-pattern in the script.
+Checks the movement rule and status tokens in `ROADMAP.md`, and ISO dates and
+decimal points in the tracked documents. It detects; it does not prevent.
 
 ## What CI repeats, and what it does not
 
@@ -112,9 +109,8 @@ there before concluding an endpoint is missing.
 
 **A silent step proves nothing.** `check-docs.sh` prints nothing when everything
 passes, so a green `documents` job produces no log line saying it ran. What the
-log does show is `/usr/bin/python3` from the `Ensure python3` step; without that
-line, `has_module` would have returned false and the language sweep would have
-printed `language sweep skipped` while the job still went green.
+log does show is `/usr/bin/python3` from the `Ensure python3` step; without
+python3 the script exits `2` and the job fails.
 
 ## Tests
 
