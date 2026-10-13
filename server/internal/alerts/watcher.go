@@ -137,6 +137,28 @@ var ServiceNames = map[int]string{
 	MonitorHevyStale:     "freereps - hevy data",
 }
 
+// conditionTitle is the title a condition is sent under in the `ntfy` format,
+// in place of the generated `<service>: problem|resolved`.
+type conditionTitle struct {
+	problem  string
+	resolved string
+}
+
+// conditionTitles name the two Apple Health conditions as what they measure.
+// Both report how old the newest data from the phone is; the server answers
+// requests throughout, and `freereps - apple health metrics: problem` reads as
+// a fault of the service in a notification list.
+var conditionTitles = map[int]conditionTitle{
+	MonitorAppleIngest: {
+		problem:  "Apple Health data overdue: metrics",
+		resolved: "Apple Health data received: metrics",
+	},
+	MonitorAppleWorkouts: {
+		problem:  "Apple Health data overdue: workouts",
+		resolved: "Apple Health data received: workouts",
+	},
+}
+
 // fallbackInterval is how often the watcher looks again when the channel is
 // switched off or misconfigured. It has to keep running in that state, because a
 // change made in the Settings UI is what it is waiting for.
@@ -426,6 +448,12 @@ func (w *Watcher) report(ctx context.Context, st storage.AlertSettings, monitorI
 		Status:    status,
 		Since:     since.UTC().Format(time.RFC3339),
 		Msg:       msg,
+	}
+	if t, ok := conditionTitles[monitorID]; ok {
+		p.Title = t.resolved
+		if firing {
+			p.Title = t.problem
+		}
 	}
 	target := notify.Target{URL: st.NtfyURL, Hostname: st.Hostname, Format: notify.Format(st.Format)}
 	if err := w.sender.Send(ctx, target, p); err != nil {

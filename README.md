@@ -481,7 +481,10 @@ Two formats are available, chosen per deployment under Settings → Alerts.
 for a person subscribed to the topic in the ntfy app. The message is the body;
 the title is `<service>: problem` or `<service>: resolved`; a problem is sent at
 priority 4 with the tag `warning`, a resolution at priority 3 with
-`white_check_mark`. The body ends with the `monitor_id`, the reporting host and
+`white_check_mark`. The two Apple Health conditions are titled
+`Apple Health data overdue: metrics|workouts` and
+`Apple Health data received: metrics|workouts` instead, because they report the
+age of the newest data from the phone while the server keeps answering. The body ends with the `monitor_id`, the reporting host and
 the time the state began.
 
 **`kuma-json`** follows Uptime Kuma's webhook shape, for a program reading the

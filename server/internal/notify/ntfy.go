@@ -72,6 +72,10 @@ type Payload struct {
 	MonitorType string `json:"monitor_type,omitempty"`
 	Since       string `json:"since,omitempty"`
 	Msg         string `json:"msg,omitempty"`
+	// Title replaces the generated `<service>: problem|resolved` title in
+	// FormatNtfy. It is not part of the FormatKumaJSON object, whose fields are
+	// the ones a Kuma consumer parses.
+	Title string `json:"-"`
 }
 
 // Target is where a payload goes. It is passed per call rather than held by the
@@ -193,10 +197,12 @@ func kumaJSONRequest(ctx context.Context, url string, p Payload) (*http.Request,
 // A problem is sent at priority 4 (high), a resolution at 3 (the default): a
 // problem is what a subscriber has to see, and ntfy clients sort and sound by
 // priority. The title carries the service and the status, because a client's
-// notification list shows the title and truncates the body.
+// notification list shows the title and truncates the body. A payload that
+// brings its own Title is sent under that instead.
 //
-// Header values are ASCII here: the service names and the status words are
-// constants of this package and the watcher, and the hostname is a host name.
+// Header values are ASCII here: the service names, the status words and the
+// titles are constants of this package and the watcher, and the hostname is a
+// host name.
 // The body is UTF-8 and may carry the em dash and ellipsis of the messages.
 func ntfyRequest(ctx context.Context, url string, p Payload) (*http.Request, error) {
 	title := p.Service + ": problem"
@@ -206,6 +212,9 @@ func ntfyRequest(ctx context.Context, url string, p Payload) (*http.Request, err
 		title = p.Service + ": resolved"
 		priority = "3"
 		tags = "white_check_mark"
+	}
+	if p.Title != "" {
+		title = p.Title
 	}
 
 	body := p.Msg

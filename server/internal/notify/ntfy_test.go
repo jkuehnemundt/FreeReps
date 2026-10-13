@@ -193,6 +193,41 @@ func TestSendNtfyFormat(t *testing.T) {
 	}
 }
 
+// TestSendNtfyUsesThePayloadTitle covers the conditions that name themselves:
+// a data-freshness notice titled `<service>: problem` reads like an outage of
+// the service in the notification list. The second half checks that the title
+// stays out of the Kuma object, which a consumer parses field by field.
+func TestSendNtfyUsesThePayloadTitle(t *testing.T) {
+	var title, body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		title, body = r.Header.Get("X-Title"), string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := Payload{
+		MonitorID: 9204,
+		Service:   "freereps - apple health metrics",
+		Status:    StatusProblem,
+		Title:     "Apple Health data overdue: metrics",
+	}
+	n := testNotifier()
+	if err := n.Send(context.Background(), Target{URL: srv.URL, Format: FormatNtfy}, p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "Apple Health data overdue: metrics" {
+		t.Errorf("title = %q, want the payload's title", title)
+	}
+
+	if err := n.Send(context.Background(), Target{URL: srv.URL, Format: FormatKumaJSON}, p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(body, "overdue") {
+		t.Errorf("kuma-json body carries the ntfy title: %s", body)
+	}
+}
+
 // TestSendRejectsUnknownFormat keeps a stored value this package cannot produce
 // from being posted in some other format.
 func TestSendRejectsUnknownFormat(t *testing.T) {

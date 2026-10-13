@@ -265,6 +265,36 @@ func TestAppleIngestSilence(t *testing.T) {
 	}
 }
 
+// TestAppleConditionsCarryTheirOwnTitle covers both transitions of the metric
+// condition: the notice and the message that follows the next stored delivery
+// are titled as data freshness, and a polled source keeps the generated title.
+func TestAppleConditionsCarryTheirOwnTitle(t *testing.T) {
+	store := newFakeStore()
+	store.last["hae_rest"] = time.Now().Add(-40 * time.Hour)
+	store.runs["withings_sync"] = map[int][]storage.SourceRun{1: failedRuns(3, "timeout")}
+	rec := &recorder{}
+	w := testWatcher(store, rec)
+	w.Check(context.Background())
+	store.last["freereps_ios"] = time.Now().Add(-time.Minute)
+	w.Check(context.Background())
+
+	var titles []string
+	for _, p := range rec.sent {
+		switch p.MonitorID {
+		case MonitorAppleIngest:
+			titles = append(titles, p.Title)
+		case MonitorWithingsSync:
+			if p.Title != "" {
+				t.Errorf("withings sync title = %q, want the generated one", p.Title)
+			}
+		}
+	}
+	want := []string{"Apple Health data overdue: metrics", "Apple Health data received: metrics"}
+	if len(titles) != 2 || titles[0] != want[0] || titles[1] != want[1] {
+		t.Errorf("titles = %q, want %q", titles, want)
+	}
+}
+
 // TestAppleIngestCountsStoredRowsNotDeliveries covers the state this rule was
 // rewritten for: the phone keeps posting, every row is a duplicate. The store
 // answers with the last delivery that wrote a row, 40 hours old, while the
