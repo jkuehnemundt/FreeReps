@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # A rebuild without a push picks up the current Go patch release of the
+  # floating builder image (golang:1.27-alpine) and re-runs govulncheck against
+  # newly published advisories. Mondays 05:17 UTC, staggered against vimmary
+  # and nutrak because the runner executes two jobs at a time.
+  schedule:
+    - cron: '17 5 * * 1'
 
 jobs:
   backend:
@@ -34,6 +40,12 @@ jobs:
         with:
           version: v2.14.0
           working-directory: server
+      # Blocking: a reachable vulnerability fails the job, and with it
+      # build-deploy, so neither a push nor the weekly schedule ships it.
+      - name: Vulnerability check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   frontend:
     runs-on: docker
@@ -95,14 +107,18 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   notify-deploy-failure:
-    needs: [build-deploy]
+    # `backend` and `frontend` are listed because a failure there skips
+    # build-deploy, and a skipped job is not a failed one: with build-deploy
+    # alone in `needs`, a weekly run stopped by govulncheck would notify nobody.
+    # No event_name check, so push, schedule and workflow_dispatch all notify.
+    needs: [backend, frontend, build-deploy]
     if: failure() && github.ref == 'refs/heads/main'
     runs-on: host
     steps:
       - name: ntfy alert
         run: |
           curl -fsS --max-time 10 \
-            -H "Title: freereps CI deploy FAILED (${GITHUB_SHA:0:7})" \
+            -H "Title: freereps CI deploy FAILED (${GITHUB_SHA:0:7}, ${{ github.event_name }})" \
             -H "Priority: high" \
             -H "Tags: warning,docker,freereps" \
             -d "Build/deploy failed for commit ${GITHUB_SHA}. :edge may be in a broken state — pin the previous digest in the homelab catalog or push a fix. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
